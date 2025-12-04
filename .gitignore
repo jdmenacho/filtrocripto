@@ -1,4 +1,25 @@
 ```
-__pycache__/
+# Compiled Python files
 *.pyc
+__pycache__/
+
+# Test files (if they contain temporary data)
+*.pytest_cache/
+.pytest_cache/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
 ```

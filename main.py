@@ -11,6 +11,8 @@ from collector import DataCollector
 from signals import SignalEngine
 from api import app
 import uvicorn
+import threading
+import time
 
 # Setup logging
 logging.basicConfig(
@@ -30,6 +32,11 @@ def load_config():
         logger.error(f"Error loading configuration: {e}")
         raise
 
+def run_api_server():
+    """Run the API server in a separate thread"""
+    logger.info("Starting API server on http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+
 async def run_system():
     """Run the complete trading system"""
     logger.info("Starting Bitvavo Trading Algorithm...")
@@ -46,9 +53,15 @@ async def run_system():
         logger.info("Performing initial data collection...")
         await data_collector.collect_all_data()
         
-        # Run the API server
-        logger.info("Starting API server on http://localhost:8000")
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+        # Run the API server in a separate thread to avoid event loop conflicts
+        api_thread = threading.Thread(target=run_api_server, daemon=True)
+        api_thread.start()
+        
+        # Run the main data collection loop in the main thread
+        logger.info("Starting data collection loop...")
+        while True:
+            await asyncio.sleep(config['monitor']['refresh_seconds'])
+            await data_collector.collect_all_data()
         
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, shutting down...")

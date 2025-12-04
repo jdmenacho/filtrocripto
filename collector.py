@@ -39,8 +39,8 @@ class DataCollector:
                 async with session.get(url) as response:
                     if response.status == 200:
                         markets = await response.json()
-                        # Filter markets with quoteAsset = EUR
-                        eur_markets = [m for m in markets if m.get('quoteAsset') == 'EUR']
+                        # Filter markets with quote = EUR (Bitvavo API uses 'quote', not 'quoteAsset')
+                        eur_markets = [m for m in markets if m.get('quote') == 'EUR']
                         self.markets_cache = {m['market']: m for m in eur_markets}
                         self.logger.info(f"Fetched {len(eur_markets)} EUR markets")
                         return eur_markets
