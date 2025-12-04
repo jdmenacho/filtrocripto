@@ -30,6 +30,17 @@ class DataCollector:
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+        
+        # Track unsupported markets to avoid repeated 404 requests
+        self.unsupported_markets = set()
+        self.market_error_counts = {}  # Track error counts per market
+        self.max_error_count = 3  # After 3 consecutive errors, mark as unsupported
+    
+    def reset_unsupported_markets(self):
+        """Reset the unsupported markets list - useful for debugging or if market availability changes"""
+        self.unsupported_markets.clear()
+        self.market_error_counts.clear()
+        self.logger.info("Cleared unsupported markets list")
 
     async def fetch_markets(self) -> List[Dict]:
         """A1. Fetch all markets from Bitvavo API"""
@@ -53,6 +64,10 @@ class DataCollector:
 
     async def fetch_candles(self, market: str, interval: str, limit: int = 100) -> List[Dict]:
         """A3. Fetch OHLCV candles for a given market and interval"""
+        # Skip if market is marked as unsupported
+        if market in self.unsupported_markets:
+            return []
+            
         url = f"{self.base_url}/markets/{market}/candles"
         params = {
             'interval': interval,
@@ -79,9 +94,19 @@ class DataCollector:
                         # Store in cache
                         cache_key = (market, interval)
                         self.candles_cache[cache_key] = deque(candles, maxlen=limit)
+                        # Reset error count on success
+                        if market in self.market_error_counts:
+                            del self.market_error_counts[market]
                         return candles
                     else:
-                        self.logger.error(f"Failed to fetch candles for {market} {interval}: {response.status}")
+                        # Handle 404 specifically - mark as unsupported after multiple failures
+                        if response.status == 404:
+                            self.market_error_counts[market] = self.market_error_counts.get(market, 0) + 1
+                            if self.market_error_counts[market] >= self.max_error_count:
+                                self.unsupported_markets.add(market)
+                                self.logger.debug(f"Marked {market} as unsupported after {self.max_error_count} consecutive 404 errors")
+                        else:
+                            self.logger.error(f"Failed to fetch candles for {market} {interval}: {response.status}")
                         return []
         except Exception as e:
             self.logger.error(f"Error fetching candles for {market} {interval}: {e}")
@@ -89,6 +114,10 @@ class DataCollector:
 
     async def fetch_ticker_24h(self, market: str) -> Optional[Dict]:
         """A4. Fetch 24h ticker data for a specific market"""
+        # Skip if market is marked as unsupported
+        if market in self.unsupported_markets:
+            return None
+            
         url = f"{self.base_url}/markets/{market}/ticker/24h"
         
         try:
@@ -97,9 +126,19 @@ class DataCollector:
                     if response.status == 200:
                         ticker_data = await response.json()
                         self.ticker_cache[market] = ticker_data
+                        # Reset error count on success
+                        if market in self.market_error_counts:
+                            del self.market_error_counts[market]
                         return ticker_data
                     else:
-                        self.logger.error(f"Failed to fetch 24h ticker for {market}: {response.status}")
+                        # Handle 404 specifically - mark as unsupported after multiple failures
+                        if response.status == 404:
+                            self.market_error_counts[market] = self.market_error_counts.get(market, 0) + 1
+                            if self.market_error_counts[market] >= self.max_error_count:
+                                self.unsupported_markets.add(market)
+                                self.logger.debug(f"Marked {market} as unsupported after {self.max_error_count} consecutive 404 errors")
+                        else:
+                            self.logger.error(f"Failed to fetch 24h ticker for {market}: {response.status}")
                         return None
         except Exception as e:
             self.logger.error(f"Error fetching 24h ticker for {market}: {e}")
@@ -196,16 +235,37 @@ class DataCollector:
             self.logger.error("No markets found, cannot continue")
             return
         
+        # Log initial status
+        total_markets = len(markets)
+        initially_unsupported = len(self.unsupported_markets)
+        markets_to_process = [m for m in self.markets_cache.keys() if m not in self.unsupported_markets]
+        
+        self.logger.info(f"Fetched {total_markets} EUR markets")
+        if initially_unsupported > 0:
+            self.logger.info(f"Skipping {initially_unsupported} unsupported markets")
+        
         # Fetch data for each market
-        for market in list(self.markets_cache.keys())[:5]:  # Limit to first 5 markets for testing
+        processed_count = 0
+        for market in markets_to_process:
             # Fetch 24h ticker
             await self.fetch_ticker_24h(market)
             
             # Fetch candles for different timeframes
             for interval in ['1m', '5m', '15m', '1h']:
                 await self.fetch_candles(market, interval)
+            
+            processed_count += 1
+            # Log progress every 50 markets
+            if processed_count % 50 == 0:
+                self.logger.debug(f"Processed {processed_count}/{len(markets_to_process)} markets...")
         
-        self.logger.info("Data collection completed")
+        self.logger.info(f"Data collection completed for {processed_count} markets")
+        
+        # Log final status
+        final_unsupported = len(self.unsupported_markets)
+        if final_unsupported > initially_unsupported:
+            new_unsupported = final_unsupported - initially_unsupported
+            self.logger.info(f"Marked {new_unsupported} additional markets as unsupported in this cycle")
 
     async def run(self):
         """Main run loop"""
