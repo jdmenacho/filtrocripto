@@ -1,0 +1,29 @@
+bitvavo:
+  base_url: "https://api.bitvavo.com/v2"
+  api_key: ""
+  api_secret: ""
+
+monitor:
+  refresh_seconds: 60
+  shortlist_interval_minutes: 15
+  top_n: 10
+
+filters:
+  min_vol_24h_eur: 1000000
+  min_change_24h_pct: 4.0
+  max_spread_pct: 0.5
+  min_volatility_1h_pct: 1.8
+  min_volatility_15m_pct: 0.6
+  rsi_min: 35
+  rsi_max: 55
+  min_pullback_pct: 0.8
+  max_pullback_pct: 1.5
+
+risk:
+  capital_eur: 1500
+  max_pct_per_trade: 0.05
+  max_open_trades: 3
+  sl_pct: 0.015
+  tp_pct: 0.0125
+
+# Nota: En esta versión NO se usa persistencia en disco ni bases de datos. Todos los datos se mantienen en memoria durante la ejecución.

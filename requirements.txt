@@ -1,0 +1,10 @@
+requests
+aiohttp
+websockets
+pandas
+numpy
+fastapi
+uvicorn
+pyyaml
+python-dotenv
+asyncio
